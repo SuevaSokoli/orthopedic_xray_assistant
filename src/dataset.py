@@ -43,11 +43,6 @@ class MURADataset(Dataset):
         self._load_from_folders()
 
     def _load_from_folders(self):
-        """
-        Scans the actual folder structure on disk.
-        Only includes files that actually exist.
-        Works correctly whether on local disk or Google Drive.
-        """
         print(f"Scanning folders in: {self.root_dir}")
         for body_part in BODY_PARTS:
             body_part_dir = os.path.join(self.root_dir, body_part)
@@ -57,11 +52,15 @@ class MURADataset(Dataset):
             body_part_idx = BODY_PART_TO_IDX[body_part]
 
             for patient in os.listdir(body_part_dir):
+                if patient.startswith("."):
+                    continue
                 patient_dir = os.path.join(body_part_dir, patient)
                 if not os.path.isdir(patient_dir):
                     continue
 
                 for study in os.listdir(patient_dir):
+                    if study.startswith("."):
+                        continue
                     study_dir = os.path.join(patient_dir, study)
                     if not os.path.isdir(study_dir):
                         continue
@@ -74,7 +73,7 @@ class MURADataset(Dataset):
                         continue
 
                     for img_file in os.listdir(study_dir):
-                        if img_file.lower().endswith(".png"):
+                        if img_file.lower().endswith(".png") and not img_file.startswith("."):
                             img_path = os.path.join(study_dir, img_file)
                             self.samples.append((
                                 img_path,
