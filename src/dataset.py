@@ -40,73 +40,49 @@ class MURADataset(Dataset):
         self.mode = mode
         self.transform = get_transforms(mode)
         self.samples = []
-        self._load_from_csv()
+        self._load_from_folders()
 
-    def _load_from_csv(self):
-        if self.mode == "train":
-            csv_filename = "train_image_paths.csv"
-        else:
-            csv_filename = "valid_image_paths.csv"
-
-        mura_root = os.path.dirname(self.root_dir)
-        csv_path = os.path.join(mura_root, csv_filename)
-
-        if not os.path.exists(csv_path):
-            print(f"CSV not found at {csv_path}")
-            return
-
-        print(f"Loading from CSV: {csv_path}")
-        with open(csv_path, "r") as f:
-            lines = f.read().strip().split("\n")
-
-        skipped = 0
-        for line in lines:
-            line = line.strip()
-            if not line:
+    def _load_from_folders(self):
+        """
+        Scans the actual folder structure on disk.
+        Only includes files that actually exist.
+        Works correctly whether on local disk or Google Drive.
+        """
+        print(f"Scanning folders in: {self.root_dir}")
+        for body_part in BODY_PARTS:
+            body_part_dir = os.path.join(self.root_dir, body_part)
+            if not os.path.exists(body_part_dir):
                 continue
 
-            parts = line.replace("\\", "/").split("/")
+            body_part_idx = BODY_PART_TO_IDX[body_part]
 
-            if len(parts) < 4:
-                continue
+            for patient in os.listdir(body_part_dir):
+                patient_dir = os.path.join(body_part_dir, patient)
+                if not os.path.isdir(patient_dir):
+                    continue
 
-            img_file = parts[-1]
-            study = parts[-2]
-            patient = parts[-3]
-            body_part = parts[-4]
+                for study in os.listdir(patient_dir):
+                    study_dir = os.path.join(patient_dir, study)
+                    if not os.path.isdir(study_dir):
+                        continue
 
-            if not body_part.startswith("XR_"):
-                continue
-            if body_part not in BODY_PART_TO_IDX:
-                continue
-            if not img_file.lower().endswith(".png"):
-                continue
+                    if "positive" in study.lower():
+                        condition_idx = 1
+                    elif "negative" in study.lower():
+                        condition_idx = 0
+                    else:
+                        continue
 
-            if "positive" in study.lower():
-                condition_idx = 1
-            elif "negative" in study.lower():
-                condition_idx = 0
-            else:
-                continue
+                    for img_file in os.listdir(study_dir):
+                        if img_file.lower().endswith(".png"):
+                            img_path = os.path.join(study_dir, img_file)
+                            self.samples.append((
+                                img_path,
+                                body_part_idx,
+                                condition_idx
+                            ))
 
-            img_path = os.path.join(
-                self.root_dir,
-                body_part,
-                patient,
-                study,
-                img_file
-            )
-
-            if os.path.exists(img_path):
-                self.samples.append((
-                    img_path,
-                    BODY_PART_TO_IDX[body_part],
-                    condition_idx
-                ))
-            else:
-                skipped += 1
-
-        print(f"Loaded {len(self.samples)} samples ({skipped} skipped - not found)")
+        print(f"Found {len(self.samples)} samples")
 
     def __len__(self):
         return len(self.samples)
