@@ -59,20 +59,13 @@ class MURADataset(Dataset):
         with open(csv_path, "r") as f:
             lines = f.read().strip().split("\n")
 
+        skipped = 0
         for line in lines:
             line = line.strip()
             if not line:
                 continue
 
-            # CSV line format:
-            # MURA-v1.1/train/XR_WRIST/patient08522/study1_negative/image2.png
             parts = line.replace("\\", "/").split("/")
-
-            # We need: XR_BODY/patient/study/image.png
-            # parts[-1] = image file
-            # parts[-2] = study folder
-            # parts[-3] = patient folder
-            # parts[-4] = body part folder
 
             if len(parts) < 4:
                 continue
@@ -89,15 +82,13 @@ class MURADataset(Dataset):
             if not img_file.lower().endswith(".png"):
                 continue
 
-            # Determine condition
             if "positive" in study.lower():
-                condition_idx = 1  # abnormal
+                condition_idx = 1
             elif "negative" in study.lower():
-                condition_idx = 0  # normal
+                condition_idx = 0
             else:
                 continue
 
-            # Build full path using root_dir
             img_path = os.path.join(
                 self.root_dir,
                 body_part,
@@ -106,13 +97,16 @@ class MURADataset(Dataset):
                 img_file
             )
 
-            self.samples.append((
-                img_path,
-                BODY_PART_TO_IDX[body_part],
-                condition_idx
-            ))
+            if os.path.exists(img_path):
+                self.samples.append((
+                    img_path,
+                    BODY_PART_TO_IDX[body_part],
+                    condition_idx
+                ))
+            else:
+                skipped += 1
 
-        print(f"Loaded {len(self.samples)} samples from CSV")
+        print(f"Loaded {len(self.samples)} samples ({skipped} skipped - not found)")
 
     def __len__(self):
         return len(self.samples)
