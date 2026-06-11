@@ -40,56 +40,83 @@ class MURADataset(Dataset):
         self.mode = mode
         self.transform = get_transforms(mode)
         self.samples = []
-        self._load_from_folders()
+        self._load_from_csv()
 
-    def _load_from_folders(self):
-        print(f"Scanning folders in: {self.root_dir}")
-        for body_part in BODY_PARTS:
-            body_part_dir = os.path.join(self.root_dir, body_part)
-            if not os.path.exists(body_part_dir):
+    def _load_from_csv(self):
+        if self.mode == "train":
+            csv_filename = "train_image_paths.csv"
+        else:
+            csv_filename = "valid_image_paths.csv"
+
+        mura_root = os.path.dirname(self.root_dir)
+        csv_path = os.path.join(mura_root, csv_filename)
+
+        if not os.path.exists(csv_path):
+            print(f"CSV not found at {csv_path}")
+            return
+
+        print(f"Loading from CSV: {csv_path}")
+        with open(csv_path, "r") as f:
+            lines = f.read().strip().split("\n")
+
+        for line in lines:
+            line = line.strip()
+            if not line:
                 continue
 
-            body_part_idx = BODY_PART_TO_IDX[body_part]
+            parts = line.replace("\\", "/").split("/")
 
-            for patient in os.listdir(body_part_dir):
-                if patient.startswith("."):
-                    continue
-                patient_dir = os.path.join(body_part_dir, patient)
-                if not os.path.isdir(patient_dir):
-                    continue
+            if len(parts) < 4:
+                continue
 
-                for study in os.listdir(patient_dir):
-                    if study.startswith("."):
-                        continue
-                    study_dir = os.path.join(patient_dir, study)
-                    if not os.path.isdir(study_dir):
-                        continue
+            img_file = parts[-1]
+            study = parts[-2]
+            patient = parts[-3]
+            body_part = parts[-4]
 
-                    if "positive" in study.lower():
-                        condition_idx = 1
-                    elif "negative" in study.lower():
-                        condition_idx = 0
-                    else:
-                        continue
+            if not body_part.startswith("XR_"):
+                continue
+            if body_part not in BODY_PART_TO_IDX:
+                continue
+            if not img_file.lower().endswith(".png"):
+                continue
+            if img_file.startswith("."):
+                continue
 
-                    for img_file in os.listdir(study_dir):
-                        if img_file.lower().endswith(".png") and not img_file.startswith("."):
-                            img_path = os.path.join(study_dir, img_file)
-                            self.samples.append((
-                                img_path,
-                                body_part_idx,
-                                condition_idx
-                            ))
+            if "positive" in study.lower():
+                condition_idx = 1
+            elif "negative" in study.lower():
+                condition_idx = 0
+            else:
+                continue
 
-        print(f"Found {len(self.samples)} samples")
+            img_path = os.path.join(
+                self.root_dir,
+                body_part,
+                patient,
+                study,
+                img_file
+            )
+
+            self.samples.append((
+                img_path,
+                BODY_PART_TO_IDX[body_part],
+                condition_idx
+            ))
+
+        print(f"Loaded {len(self.samples)} samples from CSV")
 
     def __len__(self):
         return len(self.samples)
 
     def __getitem__(self, idx):
         img_path, body_part_idx, condition_idx = self.samples[idx]
-        image = Image.open(img_path).convert("RGB")
-        image = self.transform(image)
+        try:
+            image = Image.open(img_path).convert("RGB")
+            image = self.transform(image)
+        except Exception:
+            # If image can't be opened, return a blank image
+            image = torch.zeros(3, IMAGE_SIZE, IMAGE_SIZE)
         return (
             image,
             torch.tensor(body_part_idx, dtype=torch.long),
